@@ -740,7 +740,7 @@ std::string _getAddressDisplayString(u64 address, Debugger *debugger, GuiRAMEdit
 
 Result _searchMemoryBegin(Debugger *debugger, s128 searchValue, GuiRAMEditor::searchType_t type, std::vector<GuiRAMEditor::ramAddr_t> &foundAddrs, std::vector<MemoryInfo> &memInfos) {
   for (MemoryInfo meminfo : memInfos) {
-    if (meminfo.type != MemType_Heap) continue;
+    if (meminfo.type != MemType_Heap && meminfo.type != MemType_CodeMutable) continue;
     u64 offset = 0;
     u64 bufferSize = 0x10000;
     u8 *buffer = new u8[bufferSize];
