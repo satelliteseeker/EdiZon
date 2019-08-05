@@ -798,7 +798,10 @@ void GuiCheats::onInput(u32 kdown) {
             if (m_searchValueFormat == FORMAT_HEX) {
               m_searchValue[0]._u64 = static_cast<u64>(std::stoul(str, nullptr, 16));
             } else {
-              switch(m_searchType) {
+              // Reset search value
+              m_searchValue[0]._u64 = 0LL;
+              
+              switch (m_searchType) {
                 case SEARCH_TYPE_UNSIGNED_8BIT:
                   m_searchValue[0]._u8 = static_cast<u8>(std::stoul(str, nullptr, 0));
                   break;
