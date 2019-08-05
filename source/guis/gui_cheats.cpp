@@ -26,6 +26,8 @@ static std::string _getAddressDisplayString(u64 , Debugger *debugger, searchType
 static std::string _getValueDisplayString(searchValue_t searchValue, searchType_t searchType);
 static void _moveLonelyCheats(u8 *buildID, u64 titleID);
 static bool _wrongCheatsPresent(u8 *buildID, u64 titleID);
+static std::string _getAtmosphereTitlePathString(u64 titleID);
+static std::string _getBuildIDString(u8 *buildID);
 
 GuiCheats::GuiCheats() : Gui() {
 
@@ -234,7 +236,7 @@ void GuiCheats::draw() {
       Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0E3 Search RAM     \uE0E1 Back", ALIGNED_RIGHT);
   } else {
     if (m_memoryDump->size() > 0) {
-      Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0F0 Reset search     \uE0E3 Search again     \uE0E2 Freeze value     \uE0E0 Edit value     \uE0E1 Back", ALIGNED_RIGHT);
+      Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0F0 Reset search     \uE0E3 Search again     \uE0E2 Freeze     \uE0E0 Edit     \uE0E7 Save     \uE0E1 Back", ALIGNED_RIGHT);
     }
     else 
       Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0F0 Reset search     \uE0E1 Back", ALIGNED_RIGHT);
@@ -635,6 +637,30 @@ void GuiCheats::onInput(u32 kdown) {
                 }
               })->show();
             } else (new Snackbar("Too many addresses! Narrow down the selection before editing."))->show();
+          }
+
+          if (kdown & KEY_ZR && m_memoryDump->getDumpInfo().dumpType == DumpType::ADDR) {
+            u64 address = 0;
+            m_memoryDump->getData(m_selectedEntry * sizeof(u64), &address, sizeof(u64));
+
+            u64 addressOffset;
+            searchRegion_t searchRegion;
+
+            if (address >= m_memoryDump->getDumpInfo().heapBaseAddress && address < (m_memoryDump->getDumpInfo().heapBaseAddress + m_memoryDump->getDumpInfo().heapSize)) {
+              addressOffset = address - m_memoryDump->getDumpInfo().heapBaseAddress;
+              searchRegion = SEARCH_REGION_HEAP;
+            } else if (address >= m_memoryDump->getDumpInfo().mainBaseAddress && address < (m_memoryDump->getDumpInfo().mainBaseAddress + m_memoryDump->getDumpInfo().mainSize)) {
+              addressOffset = address - m_memoryDump->getDumpInfo().mainBaseAddress;
+              searchRegion = SEARCH_REGION_MAIN;
+            } else {
+              (new Snackbar("The address is unsupported by saved cheats (neither HEAP nor MAIN)."))->show();
+              return;
+            }
+
+            searchValue_t searchValue;
+            searchValue._u64 = m_debugger->peekMemory(address);
+
+            saveCheat(addressOffset, searchValue, m_debugger, m_searchType, searchRegion);
           }
         }
     } else { /* Cheats menu */
@@ -1415,20 +1441,15 @@ static void _moveLonelyCheats(u8 *buildID, u64 titleID) {
   std::stringstream lonelyCheatPath;
   std::stringstream realCheatPath;
   
-  std::stringstream buildIDStr;
-
-  for (u8 i = 0; i < 8; i++) 
-    buildIDStr << std::nouppercase << std::hex << std::setfill('0') << std::setw(2) << (u16)buildID[i];
-
-  lonelyCheatPath << EDIZON_DIR "/cheats/" << buildIDStr.str() << ".txt";
+  lonelyCheatPath << EDIZON_DIR "/cheats/" << _getBuildIDString(buildID) << ".txt";
 
   if (access(lonelyCheatPath.str().c_str(), F_OK) == 0) {
-    realCheatPath << "/atmosphere/titles/" << std::uppercase << std::hex << std::setfill('0') << std::setw(sizeof(u64) * 2) << titleID;
+    realCheatPath << _getAtmosphereTitlePathString(titleID);
     mkdir(realCheatPath.str().c_str(), 0777);
     realCheatPath << "/cheats/";
     mkdir(realCheatPath.str().c_str(), 0777);
 
-    realCheatPath << buildIDStr.str() << ".txt";
+    realCheatPath << buildIDStr << ".txt";
 
     rename(lonelyCheatPath.str().c_str(), realCheatPath.str().c_str());
 
@@ -1439,18 +1460,107 @@ static void _moveLonelyCheats(u8 *buildID, u64 titleID) {
 static bool _wrongCheatsPresent(u8 *buildID, u64 titleID) {
   std::stringstream ss;
 
-  ss << "/atmosphere/titles/" << std::uppercase << std::hex << std::setfill('0') << std::setw(sizeof(u64) * 2) << titleID << "/cheats/";
+  ss << _getAtmosphereTitlePathString(titleID) << "/cheats/";
 
   if (!std::filesystem::exists(ss.str()))
     return false;
 
   bool cheatsFolderEmpty = std::filesystem::is_empty(ss.str());
   
-  for (u8 i = 0; i < 8; i++) 
-    ss << std::nouppercase << std::hex << std::setfill('0') << std::setw(2) << (u16)buildID[i];
-  ss << ".txt";
+  ss << _getBuildIDString(buildID) << ".txt";
 
   bool realCheatDoesExist = std::filesystem::exists(ss.str());
 
   return !(cheatsFolderEmpty || realCheatDoesExist);
+}
+
+static std::string _getAtmosphereTitlePathString(u64 titleID) {
+  std::stringstream ss;
+
+  ss << "/atmosphere/titles/" << std::uppercase << std::hex << std::setfill('0') << std::setw(sizeof(u64) * 2) << titleID;
+
+  return ss.str();
+}
+
+static std::string _getBuildIDString(u8 *buildID) {
+  std::stringstream ss;
+
+  for (u8 i = 0; i < 8; i++) 
+    ss << std::nouppercase << std::hex << std::setfill('0') << std::setw(2) << (u16)buildID[i];
+
+  return ss.str();
+}
+
+void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger *debugger, searchType_t searchType, searchRegion_t searchRegion) {
+  // Input cheat name
+  std::string cheatName = "";
+  char input[32];
+
+  if (Gui::requestKeyboardInput("Enter name", "Enter a name for the new cheat entry:", "", SwkbdType::SwkbdType_Normal, input, 32)) {
+    cheatName = std::string(input);
+  } else {
+    (new Snackbar("Cheat is not saved because name is empty."))->show();
+    return;
+  }
+
+  // Create file path
+  std::stringstream filePath;
+
+  filePath << _getAtmosphereTitlePathString(debugger->getRunningApplicationTID());
+  
+  if (!std::filesystem::exists(filePath.str())) {
+    mkdir(filePath.str().c_str(), 0777);
+  }
+
+  filePath << "/cheats/";
+
+  if (!std::filesystem::exists(filePath.str())) {
+    mkdir(filePath.str().c_str(), 0777);
+  }
+  
+  filePath << _getBuildIDString(m_buildID) << ".txt";
+  
+  bool fileNotExists = !std::filesystem::exists(filePath.str());
+  std::ofstream outputFile(filePath.str().c_str(), std::ios::app);
+
+  if (!outputFile.good()) {
+    outputFile.close();
+    (new Snackbar("Failed to open file " + filePath.str() + "."))->show();
+    return;
+  }
+
+  // If cheat file didn't exist, save title name
+  if (fileNotExists) {
+    outputFile << "[" << Title::g_titles[debugger->getRunningApplicationTID()]->getTitleName() << "]";
+  }
+
+  outputFile << std::endl << std::endl;
+  outputFile << "[" << cheatName << "]" << std::endl;
+
+  // Build raw cheat code without space separator
+  std::stringstream rawCheatCode;
+
+  rawCheatCode << "0" << std::uppercase << std::hex << (u64)dataTypeSizes[searchType];
+
+  rawCheatCode << (searchRegion == SEARCH_REGION_HEAP ? "1" : "0");
+  rawCheatCode << "000" << std::uppercase << std::hex << std::setfill('0') << std::setw(10) << addressOffset;
+
+  int valueWidth = dataTypeSizes[searchType] == 8 ? 16 : 8;
+  u64 bitMask = (2LL << (dataTypeSizes[searchType] * 8 - 1)) - 1;
+  rawCheatCode << std::uppercase << std::hex << std::setfill('0') << std::setw(valueWidth) << (searchValue._u64 & bitMask);
+  
+  std::string rawCheatCodeStr = rawCheatCode.str();
+  outputFile << rawCheatCodeStr.substr(0, 8) << " " << rawCheatCodeStr.substr(8, 8) << " " << rawCheatCodeStr.substr(16, 8);
+
+  if (valueWidth == 16) {
+    outputFile << " " << rawCheatCodeStr.substr(24, 8);
+  }
+
+  // TODO: select multiple cheats and export
+  // When exporting cheats, select from all existing entries + "Create new entry..."
+  // Enter entry name if "Create new entry..." is selected
+
+  outputFile.close();
+
+  (new MessageBox("A new cheat has been added for this title. \n Please restart the game to start using it.", MessageBox::OKAY))->show();
 }
