@@ -82,4 +82,7 @@ private:
   void searchMemoryValuesTertiary(Debugger *debugger, searchType_t searchType,
     searchMode_t searchMode, searchRegion_t searchRegion,
     MemoryDump **displayDump, std::vector<MemoryInfo> memInfos);
+
+  void saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger *debugger, searchType_t searchType,
+    searchRegion_t searchRegion);
 };
