@@ -229,18 +229,31 @@ void GuiCheats::draw() {
     return;
   }
 
+  std::string screenCmds = "";
+
   if (m_memoryDump->size() == 0) {
-    if (m_frozenAddresses.size() != 0)
-      Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0F0 Frozen es     \uE0E3 Search RAM     \uE0E1 Back", ALIGNED_RIGHT);
-    else
-      Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0E3 Search RAM     \uE0E1 Back", ALIGNED_RIGHT);
+    if (m_frozenAddresses.size() != 0) // Initial state with frozen addresses
+      screenCmds += "\uE0F0 Frozen Addresses     \uE0E3 Search RAM     ";
+    else // Initial state
+      screenCmds += "\uE0E3 Search RAM     ";
   } else {
-    if (m_memoryDump->size() > 0) {
-      Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0F0 Reset search     \uE0E3 Search again     \uE0E2 Freeze     \uE0E0 Edit     \uE0E7 Save     \uE0E1 Back", ALIGNED_RIGHT);
+    if (m_memoryDump->size() > 0) { // Has search results
+      screenCmds += "\uE0F0 Reset search     \uE0E3 Search again     ";
     }
-    else 
-      Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, "\uE0F0 Reset search     \uE0E1 Back", ALIGNED_RIGHT);
+    else // No search result
+      screenCmds += "\uE0F0 Reset search     ";
   }
+
+  if (m_memoryDump->size() > 0 && m_menuLocation == CANDIDATES) {
+    screenCmds += "\uE0E2 Freeze     \uE0E0 Edit     \uE0E7 Save     ";
+  } else if (m_menuLocation == CHEATS) {
+    screenCmds += "\uE0E0 Toggle     ";
+  }
+
+  screenCmds += "\uE0E1 Back";
+
+  // Draw screen commands
+  Gui::drawTextAligned(font20, Gui::g_framebuffer_width - 50, Gui::g_framebuffer_height - 50, currTheme.textColor, screenCmds.c_str(), ALIGNED_RIGHT);
 
   Gui::drawRectangle(256, 50, Gui::g_framebuffer_width - 256, 206, currTheme.separatorColor);
 
@@ -548,14 +561,17 @@ void GuiCheats::onInput(u32 kdown) {
         if (kdown & KEY_LEFT)
           if (m_cheatCnt > 0) {
             m_menuLocation = CHEATS;
-            m_selectedEntry = 0;
-            cheatListOffset = 0;
+            m_selectedEntry += cheatListOffset;
+
+            if (m_selectedEntry == cheatListOffset && cheatListOffset > 0)
+              cheatListOffset--;
+            else if (m_selectedEntry == (cheatListOffset + 7) && cheatListOffset < (m_cheatCnt - 8))
+              cheatListOffset++;
           }
 
         if (kdown & KEY_RIGHT) {
           m_menuLocation = CANDIDATES;
-          m_selectedEntry = 0;
-          cheatListOffset = 0;
+          m_selectedEntry -= cheatListOffset;
         }
       }
 
@@ -1098,7 +1114,7 @@ void GuiCheats::searchMemoryAddressesPrimary(Debugger *debugger, searchValue_t s
         memset(&realValue, 0, 8);
         memcpy(&realValue, buffer + i, dataTypeSizes[searchType]);
 
-        switch(searchMode) {
+        switch (searchMode) {
           case SEARCH_MODE_EQ:
             if (realValue._s64 == searchValue1._s64) {
               (*displayDump)->addData((u8*)&address, sizeof(u64));
@@ -1147,6 +1163,8 @@ void GuiCheats::searchMemoryAddressesPrimary(Debugger *debugger, searchValue_t s
           case SEARCH_MODE_RANGE:
             if (realValue._s64 >= searchValue1._s64 && realValue._s64 <= searchValue2._s64)
               (*displayDump)->addData((u8*)&address, sizeof(u64));
+            break;
+          default:
             break;
         }
       }
@@ -1347,7 +1365,7 @@ void GuiCheats::searchMemoryValuesSecondary(Debugger *debugger, searchType_t sea
       ledOn = !ledOn;
     }
 
-    switch(searchMode) {
+    switch (searchMode) {
       case SEARCH_MODE_SAME:
         if (newValue._u64 == oldValue._u64)
           addrDump->addData((u8*)&addr, sizeof(u64));
@@ -1373,6 +1391,8 @@ void GuiCheats::searchMemoryValuesSecondary(Debugger *debugger, searchType_t sea
           if (newValue._u64 < oldValue._u64)
             (*displayDump)->addData((u8*)&addr, sizeof(u64));
         }
+        break;
+      default:
         break;
     }
 
@@ -1537,28 +1557,24 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
   outputFile << std::endl << std::endl;
   outputFile << "[" << cheatName << "]" << std::endl;
 
-  // Build raw cheat code without space separator
-  std::stringstream rawCheatCode;
+  // Build cheat code without space separator
+  std::stringstream cheatCode;
 
-  rawCheatCode << "0" << std::uppercase << std::hex << (u64)dataTypeSizes[searchType];
+  cheatCode << "0" << std::uppercase << std::hex << (u64)dataTypeSizes[searchType];
 
-  rawCheatCode << (searchRegion == SEARCH_REGION_HEAP ? "1" : "0");
-  rawCheatCode << "000" << std::uppercase << std::hex << std::setfill('0') << std::setw(10) << addressOffset;
+  cheatCode << (searchRegion == SEARCH_REGION_HEAP ? "1" : "0");
+  cheatCode << "000" << std::uppercase << std::hex << std::setfill('0') << std::setw(10) << addressOffset;
 
-  int valueWidth = dataTypeSizes[searchType] == 8 ? 16 : 8;
+  int valueLength = dataTypeSizes[searchType] == 8 ? 16 : 8;
   u64 bitMask = (2LL << (dataTypeSizes[searchType] * 8 - 1)) - 1;
-  rawCheatCode << std::uppercase << std::hex << std::setfill('0') << std::setw(valueWidth) << (searchValue._u64 & bitMask);
+  cheatCode << std::uppercase << std::hex << std::setfill('0') << std::setw(valueLength) << (searchValue._u64 & bitMask);
   
-  std::string rawCheatCodeStr = rawCheatCode.str();
-  outputFile << rawCheatCodeStr.substr(0, 8) << " " << rawCheatCodeStr.substr(8, 8) << " " << rawCheatCodeStr.substr(16, 8);
+  std::string cheatCodeStr = cheatCode.str();
+  outputFile << cheatCodeStr.substr(0, 8) << " " << cheatCodeStr.substr(8, 8) << " " << cheatCodeStr.substr(16, 8);
 
-  if (valueWidth == 16) {
-    outputFile << " " << rawCheatCodeStr.substr(24, 8);
+  if (valueLength == 16) {
+    outputFile << " " << cheatCodeStr.substr(24, 8);
   }
-
-  // TODO: select multiple cheats and export
-  // When exporting cheats, select from all existing entries + "Create new entry..."
-  // Enter entry name if "Create new entry..." is selected
 
   outputFile.close();
 
