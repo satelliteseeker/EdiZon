@@ -1,0 +1,10 @@
+gui_cheats:
+- When exporting cheats, select from all existing entries + "Create new entry..."
+  - Enter entry name if "Create new entry..." is selected
+- Press ZR to Modify cheat entry in file
+- Save BASE addresses in EdiZon format
+- Memory viewer:
+  - Press X to toggle address width (1, 2, 4, 8 bytes)
+  - Press Y to go to offset
+  - Bookmark feature for offsets, press ZR to add and R to select
+  - Press ZL to switch between HEAP, MAIN and BASE
