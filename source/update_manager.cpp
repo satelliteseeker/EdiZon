@@ -243,6 +243,7 @@ Updates UpdateManager::checkUpdate() {
     }
   }
 
+  // TODO: fix the path for Atmosphere 0.10.0
   for (auto p : std::filesystem::recursive_directory_iterator("/atmosphere/titles")) {
     std::string currPath = p.path().c_str();
     if (remote[currPath] == nullptr) {

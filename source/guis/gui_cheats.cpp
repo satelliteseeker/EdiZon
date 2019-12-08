@@ -24,7 +24,7 @@ static u32 cheatListOffset = 0;
 static bool _isAddressFrozen(uintptr_t );
 static std::string _getAddressDisplayString(u64 , Debugger *debugger, searchType_t searchType);
 static std::string _getValueDisplayString(searchValue_t searchValue, searchType_t searchType);
-static std::string _getAtmosphereTitlePathString(u64 titleID);
+static std::string _getAtmosphereContentPathString(u64 titleID);
 static std::string _getBuildIDString(u8 *buildID);
 static std::string _makeCheatFilePath(u8 *buildID, u64 titleID, bool createNewFolder);
 static void _moveLonelyCheats(u8 *buildID, u64 titleID);
@@ -1467,10 +1467,17 @@ void GuiCheats::searchMemoryValuesTertiary(Debugger *debugger, searchType_t sear
  *   Matches should be stored as [MEMADDR][DUMPADDR] for fast comparing later on
  */
 
-static std::string _getAtmosphereTitlePathString(u64 titleID) {
+static std::string _getAtmosphereContentPathString(u64 titleID) {
   std::stringstream ss;
 
-  ss << "/atmosphere/titles/" << std::uppercase << std::hex << std::setfill('0') << std::setw(sizeof(u64) * 2) << titleID;
+  std::string contentPath = "/atmosphere/contents/";
+
+  if (!std::filesystem::exists(contentPath)) {
+    // Atmosphere content path of pre-0.9.4 version
+    contentPath = "/atmosphere/titles/";
+  }
+
+  ss << contentPath << std::uppercase << std::hex << std::setfill('0') << std::setw(sizeof(u64) * 2) << titleID;
 
   return ss.str();
 }
@@ -1487,7 +1494,7 @@ static std::string _getBuildIDString(u8 *buildID) {
 static std::string _makeCheatFilePath(u8 *buildID, u64 titleID, bool createNewFolder) {
   std::stringstream cheatPath;
 
-    cheatPath << _getAtmosphereTitlePathString(titleID);
+    cheatPath << _getAtmosphereContentPathString(titleID);
     
     if (!std::filesystem::exists(cheatPath.str())) {
       if (createNewFolder) {
@@ -1539,7 +1546,7 @@ static bool _wrongCheatsPresent(u8 *buildID, u64 titleID) {
   }
 
   bool realCheatDoesExist = std::filesystem::exists(cheatPath);
-  
+
   return !realCheatDoesExist;
 }
 
@@ -1547,7 +1554,7 @@ static std::string _formatCheatCode(std::string cheatCode) {
   for (u32 i = 8; i < cheatCode.length(); i += 8 + 1) {
     cheatCode.insert(i, " ");
   }
-
+  
   return cheatCode;
 }
 
@@ -1559,7 +1566,7 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
 
   for (u32 i = 0; i < m_cheatCnt; i++) {
     options.push_back(std::string(m_cheats[i].definition.readable_name));
-}
+  }
 
   ListSelector *selector = new ListSelector("Add current address to ", "\uE0E0 Save     \uE0E1 Back", options);
   selector->setInputAction([&, addressOffset, searchValue, debugger, searchType, searchRegion](u32 k, u16 selectedItem) {
@@ -1587,41 +1594,41 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
         if (Gui::requestKeyboardInput("Enter name", "Enter a name for the new cheat entry:", initialString, SwkbdType::SwkbdType_Normal, nameInput, 63)) {
           // initialString is required to prevent crash
           cheatName = std::string(nameInput);
-  } else {
-    (new Snackbar("Cheat is not saved because name is empty."))->show();
-    return;
-  }
+        } else {
+          (new Snackbar("Cheat is not saved because name is empty."))->show();
+          return;
+        }
       }
 
-  // Create file path
+      // Create file path
       std::string cheatPath = _makeCheatFilePath(m_buildID, debugger->getRunningApplicationTID(), true);
-
+      
       bool fileNotExists = !std::filesystem::exists(cheatPath);
 
       if (!fileNotExists) {
         // Backup existing cheats
         std::string backupPath = cheatPath + "." + std::to_string(std::chrono::seconds(std::time(nullptr)).count()) + ".bak";
         cpFile(cheatPath, backupPath);
-  }
-  
+      }
+
       if (selectedItem == 0) {
         // Open file and save cheat to new entry
         std::fstream outputFile(cheatPath.c_str(), std::ios::app);
 
-  if (!outputFile.good()) {
-    outputFile.close();
+        if (!outputFile.good()) {
+          outputFile.close();
           (new Snackbar("Failed to open file " + cheatPath + "."))->show();
-    return;
-  }
+          return;
+        }
 
-  if (fileNotExists) {
+        if (fileNotExists) {
           // Save title name
           outputFile << "[" << Title::g_titles[debugger->getRunningApplicationTID()]->getTitleName() << "]" << std::endl;
-  }
+        }
 
         // Create new cheat entry at end of file
         outputFile << std::endl;
-  outputFile << "[" << cheatName << "]" << std::endl;
+        outputFile << "[" << cheatName << "]" << std::endl;
         outputFile << formattedCheatCode << std::endl;
         outputFile.close();
       } else {
@@ -1629,6 +1636,7 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
         if (fileNotExists) {
           // Show error if cheat file is not found
           (new MessageBox("Failed to save new cheat " + formattedCheatCode + ": \n The cheat file " + cheatPath + " is not found.", MessageBox::OKAY))->show();
+          selector->hide();
           return;
         }
 
@@ -1637,6 +1645,7 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
         if (!outputFile.good()) {
           outputFile.close();
           (new Snackbar("Failed to open file " + cheatPath + "."))->show();
+          selector->hide();
           return;
         }
 
@@ -1659,7 +1668,7 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
             } else if (!currentLine.empty()) {
               // Count the number of opcodes in cheat entry
               std::stringstream currentLineStream(currentLine);
-  
+
               while (std::getline(currentLineStream, currentOpCode, ' ')) {
                 numOfOpCodes++;
               }
@@ -1672,7 +1681,7 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
           } else if (currentLine == formattedEntryName) {
             foundCheatEntry = true;
           }
-  }
+        }
 
         // Insert cheat code to the stored position
         if (insertPos) {
@@ -1680,11 +1689,11 @@ void GuiCheats::saveCheat(u64 addressOffset, searchValue_t searchValue, Debugger
           outputFile.clear();
           outputFile.seekp(insertPos);
           outputFile << formattedCheatCode << std::endl << fileBuffer;
-  outputFile.close();
+          outputFile.close();
         }
       }
 
-  (new MessageBox("A new cheat has been added for this title. \n Please restart the game to start using it.", MessageBox::OKAY))->show();
+      (new MessageBox("A new cheat has been added for this title. \n Please restart the game to start using it.", MessageBox::OKAY))->show();
       selector->hide();
     }
   })->show();
